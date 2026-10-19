@@ -27,7 +27,7 @@ fn launch_app(
     state: State<'_, AppState>,
 ) -> Result<SessionInfo, String> {
     let mut manager = state.sessions.lock().map_err(|_| "Session manager lock was poisoned".to_string())?;
-    manager.launch(&device_id, &package_name, &label)
+    manager.launch(&device_id, &package_name, &label, &preset)
 }
 
 #[tauri::command]
