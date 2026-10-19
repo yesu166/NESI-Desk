@@ -34,20 +34,23 @@ pub struct SessionManager {
 }
 
 impl SessionManager {
-    pub fn launch(&mut self, device_id: &str, package_name: &str, label: &str) -> Result<SessionInfo, String> {
+    pub fn launch(&mut self, device_id: &str, package_name: &str, label: &str, preset: &str) -> Result<SessionInfo, String> {
         validate_package(package_name)?;
         verify_device_authorized(device_id)?;
         let engine = scrcpy_path()?;
+        let options = preset_options(preset)?;
         let started_at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         let id = Uuid::new_v4().to_string();
         let title = format!("NESI Desk — {}", sanitize_title(label));
-        let mut child = Command::new(engine)
-            .args([
-                "--serial", device_id,
-                "--new-display=1280x960/160",
-                "--start-app", package_name,
-                "--window-title", &title,
-            ])
+        let mut command = Command::new(engine);
+        command.args(["--serial", device_id]);
+        command.args(options);
+        command.args([
+            "--new-display=1280x960/160",
+            "--start-app", package_name,
+            "--window-title", &title,
+        ]);
+        let mut child = command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -148,6 +151,15 @@ impl Drop for SessionManager {
 
 fn sanitize_title(label: &str) -> String {
     label.chars().filter(|c| !c.is_control()).take(80).collect()
+}
+
+fn preset_options(preset: &str) -> Result<Vec<&'static str>, String> {
+    match preset {
+        "Eco" => Ok(vec!["--max-size=1024", "--video-bit-rate=2M", "--max-fps=30"]),
+        "Balanced" => Ok(vec!["--max-size=1600", "--video-bit-rate=8M", "--max-fps=60"]),
+        "Quality" => Ok(vec!["--max-size=1920", "--video-bit-rate=16M", "--max-fps=60"]),
+        _ => Err("Unsupported streaming preset. Choose Eco, Balanced, or Quality.".into()),
+    }
 }
 
 fn validate_package(package: &str) -> Result<(), String> {
