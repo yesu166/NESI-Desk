@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Minimal permissions for the NESI Desk desktop UI.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}
