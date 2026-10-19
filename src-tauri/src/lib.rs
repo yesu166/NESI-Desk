@@ -5,9 +5,10 @@ use android::{
     connect_wireless_device as connect_wireless_native,
     discover_devices,
     diagnostics_for,
+    device_profile,
     installed_apps,
     pair_wireless_device as pair_wireless_native,
-    AppInfo, DeviceInfo, Diagnostics,
+    AppInfo, DeviceInfo, DeviceProfile, Diagnostics,
 };
 use sessions::{SessionInfo, SessionManager};
 use std::sync::Mutex;
@@ -25,6 +26,9 @@ fn list_devices() -> Result<Vec<DeviceInfo>, String> { discover_devices() }
 
 #[tauri::command]
 fn list_apps(device_id: String) -> Result<Vec<AppInfo>, String> { installed_apps(&device_id) }
+
+#[tauri::command]
+fn get_device_profile(device_id: String) -> Result<DeviceProfile, String> { device_profile(&device_id) }
 
 #[tauri::command]
 fn launch_app(
@@ -65,7 +69,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState { sessions: Mutex::new(SessionManager::default()) })
         .invoke_handler(tauri::generate_handler![
-            get_diagnostics, list_devices, list_apps, launch_app, list_sessions, close_session,
+            get_diagnostics, list_devices, list_apps, get_device_profile, launch_app, list_sessions, close_session,
             pair_wireless, connect_wireless
         ])
         .build(tauri::generate_context!())
