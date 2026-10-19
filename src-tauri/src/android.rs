@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::{env,path::{Path,PathBuf},process::{Command,Stdio}};
+use std::{env,net::SocketAddr,path::{Path,PathBuf},process::{Command,Stdio}};
 #[derive(Debug,Clone,Serialize)]#[serde(rename_all="camelCase")]pub struct DeviceInfo{pub id:String,pub state:String,pub model:Option<String>,pub product:Option<String>,pub transport_id:Option<String>}
 #[derive(Debug,Clone,Serialize)]#[serde(rename_all="camelCase")]pub struct AppInfo{pub package_name:String,pub label:String}
 #[derive(Debug,Clone,Serialize)]pub struct ToolStatus{pub available:bool,pub path:Option<String>,pub version:Option<String>,pub message:String}
@@ -13,5 +13,29 @@ fn adb_for_device(id:&str,args:&[&str])->Result<String,String>{if id.trim().is_e
 pub fn discover_devices()->Result<Vec<DeviceInfo>,String>{let p=adb_path()?;let out=run_tool(&p,&["devices","-l"])?;let mut result=Vec::new();for line in out.lines().skip(1){let line=line.trim();if line.is_empty()||line.starts_with('*'){continue;}let mut parts=line.split_whitespace();let Some(id)=parts.next()else{continue};let Some(state)=parts.next()else{continue};let attrs:Vec<&str>=parts.collect();let model=attrs.iter().find_map(|s|s.strip_prefix("model:")).map(|s|s.replace('_'," "));let product=attrs.iter().find_map(|s|s.strip_prefix("product:")).map(str::to_string);let transport_id=attrs.iter().find_map(|s|s.strip_prefix("transport_id:")).map(str::to_string);result.push(DeviceInfo{id:id.into(),state:state.into(),model,product,transport_id});}Ok(result)}
 pub fn verify_device_authorized(id:&str)->Result<(),String>{let d=discover_devices()?;let d=d.iter().find(|d|d.id==id).ok_or_else(||"The selected device is no longer connected. Refresh devices.".to_string())?;if d.state!="device"{return Err(if d.state=="unauthorized"{"Unlock the phone and accept the USB debugging RSA prompt.".into()}else{format!("Device is not ready (ADB state: {}). Check USB and refresh.",d.state)});}Ok(())}
 pub fn installed_apps(id:&str)->Result<Vec<AppInfo>,String>{verify_device_authorized(id)?;let out=adb_for_device(id,&["shell","pm","list","packages","-3"])?;let mut p:Vec<String>=out.lines().filter_map(|l|l.trim().strip_prefix("package:")).map(str::trim).filter(|s|!s.is_empty()).map(str::to_string).collect();p.sort_by_key(|s|s.to_lowercase());Ok(p.into_iter().map(|package_name|{let label=package_name.rsplit('.').next().unwrap_or(&package_name).replace('_'," ");AppInfo{package_name,label}}).collect())}
+pub fn pair_wireless_device(address: &str, pairing_code: &str) -> Result<String, String> {
+    validate_wireless_address(address)?;
+    if !(4..=8).contains(&pairing_code.len()) || !pairing_code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("Pairing code must contain 4–8 digits.".into());
+    }
+    let adb = adb_path()?;
+    run_tool(&adb, &["pair", address, pairing_code])
+}
+
+pub fn connect_wireless_device(address: &str) -> Result<String, String> {
+    validate_wireless_address(address)?;
+    let adb = adb_path()?;
+    run_tool(&adb, &["connect", address])
+}
+
+fn validate_wireless_address(address: &str) -> Result<SocketAddr, String> {
+    let parsed = address.parse::<SocketAddr>()
+        .map_err(|_| "Enter a valid device IP address and port, such as 192.168.1.20:37123.".to_string())?;
+    if parsed.port() == 0 {
+        return Err("The device port must be between 1 and 65535.".into());
+    }
+    Ok(parsed)
+}
+
 pub fn scrcpy_path()->Result<PathBuf,String>{find_executable("scrcpy").ok_or_else(||"scrcpy was not found. Install scrcpy v5.0.1 Windows x64 and add it to PATH or ./tools.".to_string())}
 #[cfg(test)]mod tests{use super::*;#[test]fn parses_device_attributes(){let line="ZX1G22B device product:foo model:Pixel_8 transport_id:4";let mut p=line.split_whitespace();let id=p.next().unwrap();let state=p.next().unwrap();let a:Vec<&str>=p.collect();let model=a.iter().find_map(|s|s.strip_prefix("model:")).map(|s|s.replace('_'," "));assert_eq!(id,"ZX1G22B");assert_eq!(state,"device");assert_eq!(model.as_deref(),Some("Pixel 8"));}#[test]fn rejects_bad_device_id(){assert!(adb_for_device("bad\nid",&["devices"]).is_err());}}
