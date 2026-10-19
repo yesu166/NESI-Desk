@@ -1,0 +1,79 @@
+use serde::Serialize;
+use std::{env,net::SocketAddr,path::{Path,PathBuf},process::{Command,Stdio}};
+#[derive(Debug,Clone,Serialize)]#[serde(rename_all="camelCase")]pub struct DeviceInfo{pub id:String,pub state:String,pub model:Option<String>,pub product:Option<String>,pub transport_id:Option<String>}
+#[derive(Debug,Clone,Serialize)]#[serde(rename_all="camelCase")]pub struct AppInfo{pub package_name:String,pub label:String}
+#[derive(Debug,Clone,Serialize)]pub struct ToolStatus{pub available:bool,pub path:Option<String>,pub version:Option<String>,pub message:String}
+#[derive(Debug,Clone,Serialize)]pub struct Diagnostics{pub adb:ToolStatus,pub scrcpy:ToolStatus,pub devices:Vec<DeviceInfo>}
+#[derive(Debug,Clone,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct DeviceProfile {
+    pub device_id: String,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub android_release: Option<String>,
+    pub sdk_version: Option<String>,
+    pub display_size: Option<String>,
+    pub display_density: Option<String>,
+}
+pub fn find_executable(name:&str)->Option<PathBuf>{let binary=if cfg!(windows){format!("{name}.exe")}else{name.to_string()};env::var_os("PATH").and_then(|p|env::split_paths(&p).map(|d|d.join(&binary)).find(|p|p.is_file())).or_else(||{let p=env::current_dir().ok()?.join("tools").join(&binary);p.is_file().then_some(p)})}
+fn run_tool(path:&Path,args:&[&str])->Result<String,String>{let o=Command::new(path).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).output().map_err(|e|format!("Could not start {}: {e}",path.display()))?;if !o.status.success(){let e=String::from_utf8_lossy(&o.stderr).trim().to_string();return Err(if e.is_empty(){format!("{} exited with {}",path.display(),o.status)}else{e});}Ok(String::from_utf8_lossy(&o.stdout).to_string())}
+fn inspect_tool(n:&str,args:&[&str],absent:&str)->ToolStatus{match find_executable(n){Some(p)=>match run_tool(&p,args){Ok(out)=>ToolStatus{available:true,path:Some(p.display().to_string()),version:out.lines().map(str::trim).find(|s|!s.is_empty()).map(str::to_string),message:format!("{n} is available.")},Err(e)=>ToolStatus{available:false,path:Some(p.display().to_string()),version:None,message:e}},None=>ToolStatus{available:false,path:None,version:None,message:absent.to_string()}}}
+pub fn diagnostics_for()->Diagnostics{let adb=inspect_tool("adb",&["version"],"Android Platform Tools not found. Install adb and add it to PATH or ./tools.");let scrcpy=inspect_tool("scrcpy",&["--version"],"scrcpy v5.0.1 Windows x64 not found. Add scrcpy.exe to PATH or ./tools.");let devices=discover_devices().unwrap_or_default();Diagnostics{adb,scrcpy,devices}}
+fn adb_path()->Result<PathBuf,String>{find_executable("adb").ok_or_else(||"Android Debug Bridge (adb) was not found. Install Android Platform Tools and reopen NESI Desk.".to_string())}
+fn adb_for_device(id:&str,args:&[&str])->Result<String,String>{if id.trim().is_empty()||id.chars().any(char::is_control){return Err("Invalid Android device identifier.".into());}let p=adb_path()?;let mut a=vec!["-s",id];a.extend_from_slice(args);run_tool(&p,&a)}
+pub fn discover_devices()->Result<Vec<DeviceInfo>,String>{let p=adb_path()?;let out=run_tool(&p,&["devices","-l"])?;let mut result=Vec::new();for line in out.lines().skip(1){let line=line.trim();if line.is_empty()||line.starts_with('*'){continue;}let mut parts=line.split_whitespace();let Some(id)=parts.next()else{continue};let Some(state)=parts.next()else{continue};let attrs:Vec<&str>=parts.collect();let model=attrs.iter().find_map(|s|s.strip_prefix("model:")).map(|s|s.replace('_'," "));let product=attrs.iter().find_map(|s|s.strip_prefix("product:")).map(str::to_string);let transport_id=attrs.iter().find_map(|s|s.strip_prefix("transport_id:")).map(str::to_string);result.push(DeviceInfo{id:id.into(),state:state.into(),model,product,transport_id});}Ok(result)}
+pub fn verify_device_authorized(id:&str)->Result<(),String>{let d=discover_devices()?;let d=d.iter().find(|d|d.id==id).ok_or_else(||"The selected device is no longer connected. Refresh devices.".to_string())?;if d.state!="device"{return Err(if d.state=="unauthorized"{"Unlock the phone and accept the USB debugging RSA prompt.".into()}else{format!("Device is not ready (ADB state: {}). Check USB and refresh.",d.state)});}Ok(())}
+pub fn installed_apps(id:&str)->Result<Vec<AppInfo>,String>{verify_device_authorized(id)?;let out=adb_for_device(id,&["shell","pm","list","packages","-3"])?;let mut p:Vec<String>=out.lines().filter_map(|l|l.trim().strip_prefix("package:")).map(str::trim).filter(|s|!s.is_empty()).map(str::to_string).collect();p.sort_by_key(|s|s.to_lowercase());Ok(p.into_iter().map(|package_name|{let label=package_name.rsplit('.').next().unwrap_or(&package_name).replace('_'," ");AppInfo{package_name,label}}).collect())}
+fn read_device_property(device_id: &str, property: &str) -> Option<String> {
+    adb_for_device(device_id, &["shell", "getprop", property]).ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+fn first_nonempty_line(text: String) -> Option<String> {
+    text.lines().map(str::trim).find(|line| !line.is_empty()).map(str::to_string)
+}
+
+pub fn device_profile(device_id: &str) -> Result<DeviceProfile, String> {
+    verify_device_authorized(device_id)?;
+    let display_size = adb_for_device(device_id, &["shell", "wm", "size"]).ok().and_then(first_nonempty_line);
+    let display_density = adb_for_device(device_id, &["shell", "wm", "density"]).ok().and_then(first_nonempty_line);
+    Ok(DeviceProfile {
+        device_id: device_id.to_string(),
+        manufacturer: read_device_property(device_id, "ro.product.manufacturer"),
+        model: read_device_property(device_id, "ro.product.model").or_else(|| {
+            discover_devices().ok()?.into_iter().find(|d| d.id == device_id).and_then(|d| d.model)
+        }),
+        android_release: read_device_property(device_id, "ro.build.version.release"),
+        sdk_version: read_device_property(device_id, "ro.build.version.sdk"),
+        display_size,
+        display_density,
+    })
+}
+
+pub fn pair_wireless_device(address: &str, pairing_code: &str) -> Result<String, String> {
+    validate_wireless_address(address)?;
+    if !(4..=8).contains(&pairing_code.len()) || !pairing_code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("Pairing code must contain 4–8 digits.".into());
+    }
+    let adb = adb_path()?;
+    run_tool(&adb, &["pair", address, pairing_code])
+}
+
+pub fn connect_wireless_device(address: &str) -> Result<String, String> {
+    validate_wireless_address(address)?;
+    let adb = adb_path()?;
+    run_tool(&adb, &["connect", address])
+}
+
+fn validate_wireless_address(address: &str) -> Result<SocketAddr, String> {
+    let parsed = address.parse::<SocketAddr>()
+        .map_err(|_| "Enter a valid device IP address and port, such as 192.168.1.20:37123.".to_string())?;
+    if parsed.port() == 0 {
+        return Err("The device port must be between 1 and 65535.".into());
+    }
+    Ok(parsed)
+}
+
+pub fn scrcpy_path()->Result<PathBuf,String>{find_executable("scrcpy").ok_or_else(||"scrcpy was not found. Install scrcpy v5.0.1 Windows x64 and add it to PATH or ./tools.".to_string())}
+#[cfg(test)]mod tests{use super::*;#[test]fn parses_device_attributes(){let line="ZX1G22B device product:foo model:Pixel_8 transport_id:4";let mut p=line.split_whitespace();let id=p.next().unwrap();let state=p.next().unwrap();let a:Vec<&str>=p.collect();let model=a.iter().find_map(|s|s.strip_prefix("model:")).map(|s|s.replace('_'," "));assert_eq!(id,"ZX1G22B");assert_eq!(state,"device");assert_eq!(model.as_deref(),Some("Pixel 8"));}#[test]fn rejects_bad_device_id(){assert!(adb_for_device("bad\nid",&["devices"]).is_err());}#[test]fn validates_wireless_addresses(){assert!(validate_wireless_address("192.168.1.20:37123").is_ok());assert!(validate_wireless_address("not-an-ip:abc").is_err());assert!(validate_wireless_address("192.168.1.20:0").is_err());}#[test]fn rejects_non_numeric_pairing_code_before_starting_adb(){let e=pair_wireless_device("192.168.1.20:37123","abc123").unwrap_err();assert!(e.contains("digits"));}}
