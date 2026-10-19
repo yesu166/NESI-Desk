@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, AppWindow, ArrowUpRight, Cable, Check, ChevronDown, CircleHelp, Cpu, ExternalLink, Grid2X2, HardDrive, Info, Monitor, MoreHorizontal, RefreshCw, Search, Settings2, Smartphone, Sparkles, Terminal, Usb, X } from "lucide-react";
+import { Activity, AppWindow, ArrowUpRight, Cable, Check, ChevronDown, CircleHelp, Cpu, ExternalLink, Grid2X2, HardDrive, Info, Monitor, MoreHorizontal, RefreshCw, Search, Settings2, Smartphone, Sparkles, Terminal, Usb, Wifi, X } from "lucide-react";
 import { closeSession, connectWireless, getDiagnostics, launchApp, listApps, listSessions, pairWireless, refreshDevices } from "./lib/bridge";
 import type { AndroidApp, AndroidDevice, Diagnostics, Session } from "./types";
 
