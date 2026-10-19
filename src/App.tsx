@@ -16,8 +16,8 @@ function App() {
  const [busy,setBusy]=useState(false);
  const [notice,setNotice]=useState("Connect an Android phone to get started.");
  const [error,setError]=useState("");
- const [theme,setTheme]=useState<"dark"|"light">("dark");
- const [preset,setPreset]=useState("Balanced");
+ const [theme,setTheme]=useState<"dark"|"light">(()=>{try{return window.localStorage.getItem("nesi-desk:theme")==="light"?"light":"dark";}catch{return "dark";}});
+ const [preset,setPreset]=useState<"Eco"|"Balanced"|"Quality">(()=>{try{const value=window.localStorage.getItem("nesi-desk:preset");return value==="Eco"||value==="Quality"?value:"Balanced";}catch{return "Balanced";}});
  const selected=devices.find(d=>d.id===selectedDevice);
  const connected=selected?.state==="device";
  const readyApps=useMemo(()=>apps.filter(a=>(a.label+" "+a.packageName).toLowerCase().includes(search.toLowerCase())),[apps,search]);
@@ -25,7 +25,8 @@ function App() {
  useEffect(()=>{void refresh();},[refresh]);
  useEffect(()=>{if(!selectedDevice||!connected){setApps([]);return;}let cancelled=false;listApps(selectedDevice).then(a=>{if(!cancelled)setApps(a);}).catch(e=>{if(!cancelled)setError(String(e));});return()=>{cancelled=true;};},[selectedDevice,connected]);
  useEffect(()=>{if(!("__TAURI_INTERNALS__" in window))return;let cancelled=false;const sync=async()=>{try{const current=await listSessions();if(!cancelled)setSessions(current);}catch(e){if(!cancelled)setError(String(e));}};void sync();const timer=window.setInterval(()=>void sync(),1500);return()=>{cancelled=true;window.clearInterval(timer);};},[]);
- async function runApp(app:AndroidApp){if(!selectedDevice||!connected){setError("Select an authorized Android device first.");return;}setError("");setNotice("Starting "+app.label+"…");try{const s=await launchApp(selectedDevice,app.packageName,app.label);setSessions(old=>[s,...old.filter(x=>x.id!==s.id)]);setNotice(app.label+" session requested. Verify the scrcpy window opened.");setView("workspace");}catch(e){setError(String(e));}}
+ useEffect(()=>{try{window.localStorage.setItem("nesi-desk:theme",theme);window.localStorage.setItem("nesi-desk:preset",preset);}catch{/* Preferences remain usable for this session if storage is unavailable. */}},[theme,preset]);
+ async function runApp(app:AndroidApp){if(!selectedDevice||!connected){setError("Select an authorized Android device first.");return;}setError("");setNotice("Starting "+app.label+"…");try{const s=await launchApp(selectedDevice,app.packageName,app.label,preset);setSessions(old=>[s,...old.filter(x=>x.id!==s.id)]);setNotice(app.label+" session requested. Verify the scrcpy window opened.");setView("workspace");}catch(e){setError(String(e));}}
  async function stopSession(s:Session){try{await closeSession(s.id);setSessions(old=>old.filter(x=>x.id!==s.id));setNotice(s.label+" session closed.");}catch(e){setError(String(e));}}
  const openDevices=()=>{setView("devices");void refresh();};
  const status=connected?"Connected":selected?.state==="unauthorized"?"Needs approval":"Not connected";
