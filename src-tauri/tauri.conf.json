@@ -9,27 +9,8 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "NESI Desk",
-        "width": 1240,
-        "height": 820,
-        "minWidth": 900,
-        "minHeight": 620,
-        "center": true
-      }
-    ],
-    "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost"
-    }
+    "windows": [{"title":"NESI Desk","width":1240,"height":820,"minWidth":900,"minHeight":620,"center":true}],
+    "security": {"csp":"default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost"}
   },
-  "bundle": {
-    "active": true,
-    "targets": [
-      "nsis"
-    ],
-    "category": "Productivity",
-    "shortDescription": "Phone-powered Android desktop workspace",
-    "longDescription": "Run real Android applications from your phone in desktop streaming windows."
-  }
+  "bundle": {"active":true,"targets":["nsis"],"category":"Productivity","shortDescription":"Phone-powered Android desktop workspace","longDescription":"Run real Android applications from your phone in desktop streaming windows."}
 }
