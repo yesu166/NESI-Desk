@@ -117,3 +117,7 @@ These are requested scrcpy limits, not guaranteed performance measurements. Actu
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 NESI Desk's source repository carries the existing MIT license. Third-party components retain their own licenses.
+
+## Project brief
+
+For the project's purpose, scope, current maturity, proposed roadmap, limitations, and collaboration opportunities, see [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
